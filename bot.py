@@ -217,6 +217,7 @@ async def upload_file(gid, path):
     last_text = ""
 
     async def cb(cur, tot):
+        nonlocal last_text
         speed = cur / (time.time() - start) if time.time() - start > 0 else 0
         percent = cur * 100 / tot if tot > 0 else 0
         eta = int((tot - cur) / speed) if speed > 0 else 0
@@ -234,7 +235,6 @@ async def upload_file(gid, path):
         if new_text != last_text:
             try:
                 await msg.edit_text(new_text)
-                nonlocal last_text
                 last_text = new_text
             except Exception as e:
                 log.error(f"Failed to edit message during upload: {e}")

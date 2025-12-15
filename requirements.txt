@@ -1,4 +1,5 @@
-pyrogram>=2.0.0
-aria2p==0.11.0
-git+https://github.com/pyrogram/tgcrypto.git
-Flask
+pyrogram==2.0.106
+tgcrypto
+aria2p
+Flask==3.0.0
+setuptools

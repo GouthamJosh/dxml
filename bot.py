@@ -105,11 +105,15 @@ async def start(_, m: Message):
 
 @app.on_message(filters.command(["l", "leech"]))
 async def leech(_, m: Message):
-    if len(m.command) < 2:
+    if len(m.command) < 2 or not m.command[1].strip():
         return await m.reply_text("Usage: `/l <link>`")
 
     ensure_aria2()
-    gid = aria2_client.add_uri([m.command[1]])
+    try:
+        gid = aria2_client.add_uri([m.command[1]])
+    except Exception as e:
+        log.error(f"Failed to add URI: {e}")
+        return await m.reply_text("❌ Invalid link or failed to start download")
 
     msg = await m.reply_text(f"📥 Task started\n🆔 `{gid}`")
     active[gid] = msg
@@ -154,6 +158,7 @@ def stuck_cleaner():
 # ================= PROGRESS =================
 async def progress_loop(gid):
     msg = active.get(gid)
+    last_text = ""
 
     while True:
         try:
@@ -179,7 +184,7 @@ async def progress_loop(gid):
         speed = d.download_speed
         eta = int((total - done) / speed) if speed else 0
 
-        await msg.edit_text(
+        new_text = (
             f"📥 **Downloading**\n"
             f"📄 `{name}`\n"
             f"📦 {human(total)}\n\n"
@@ -189,21 +194,34 @@ async def progress_loop(gid):
             f"⏱ {time.strftime('%H:%M:%S', time.gmtime(eta))}"
         )
 
+        if new_text != last_text:
+            try:
+                await msg.edit_text(new_text)
+                last_text = new_text
+            except Exception as e:
+                log.error(f"Failed to edit message: {e}")
+
         await asyncio.sleep(3)
 
 # ================= UPLOAD =================
 async def upload_file(gid, path):
     msg = active.get(gid)
+    if not os.path.exists(path):
+        await msg.edit_text("❌ File not found after download")
+        force_remove(gid)
+        return
+
     total = os.path.getsize(path)
     start = time.time()
     name = os.path.basename(path)
+    last_text = ""
 
     async def cb(cur, tot):
-        speed = cur / (time.time() - start)
-        percent = cur * 100 / tot
-        eta = int((tot - cur) / speed) if speed else 0
+        speed = cur / (time.time() - start) if time.time() - start > 0 else 0
+        percent = cur * 100 / tot if tot > 0 else 0
+        eta = int((tot - cur) / speed) if speed > 0 else 0
 
-        await msg.edit_text(
+        new_text = (
             f"📤 **Uploading**\n"
             f"📄 `{name}`\n"
             f"📦 {human(total)}\n\n"
@@ -212,9 +230,22 @@ async def upload_file(gid, path):
             f"⚡ {human(speed)}/s\n"
             f"⏱ {time.strftime('%H:%M:%S', time.gmtime(eta))}"
         )
-        await asyncio.sleep(3)
 
-    await app.send_document(msg.chat.id, path, progress=cb)
+        if new_text != last_text:
+            try:
+                await msg.edit_text(new_text)
+                nonlocal last_text
+                last_text = new_text
+            except Exception as e:
+                log.error(f"Failed to edit message during upload: {e}")
+
+    try:
+        await app.send_document(msg.chat.id, path, progress=cb)
+    except Exception as e:
+        log.error(f"Failed to upload file: {e}")
+        await msg.edit_text("❌ Upload failed")
+        force_remove(gid)
+        return
 
     try:
         os.remove(path)

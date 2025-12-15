@@ -1,0 +1,20 @@
+FROM python:3.9-slim
+
+# Install system deps (aria2)
+RUN apt-get update && apt-get install -y aria2 git && rm -rf /var/lib/apt/lists/*  # Added git for TgCrypto fallback
+
+WORKDIR /app
+
+# Copy and run start.sh for full setup
+COPY start.sh .
+RUN chmod +x start.sh
+
+# Copy requirements and install Python deps via start.sh
+COPY requirements.txt .
+RUN ./start.sh --install-only  # Custom flag to install without running the bot
+
+# Copy bot script
+COPY bot.py .
+
+# Run the bot (start.sh will handle the rest)
+CMD ["./start.sh"]
